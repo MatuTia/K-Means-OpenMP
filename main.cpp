@@ -8,7 +8,8 @@ static const int numCentroids = 20;
 static const int seed = 27;
 
 struct centroid {
-    double x, y;
+    double x{0}, y{0};
+    int numPointsAssigned{0};
 };
 
 struct point {
@@ -37,6 +38,7 @@ int main() {
     {
 
         do {
+            centroid privateCentroid[numCentroids];
 #pragma omp barrier
 
 #pragma omp single
@@ -61,26 +63,32 @@ int main() {
                     points[i].assignedCentroid = centroid;
                     change = true;
                 }
+
+                privateCentroid[centroid].numPointsAssigned++;
+                privateCentroid[centroid].x += points[i].x;
+                privateCentroid[centroid].y += points[i].y;
+
             }
 
             if (change) {
+#pragma omp single
+                centroids = new centroid[numCentroids];
 
-
-#pragma omp for schedule(dynamic) nowait
                 for (int j = 0; j < numCentroids; j++) {
-                    double x = 0;
-                    double y = 0;
-                    int numPoint = 0;
+#pragma omp atomic update
+                    centroids[j].numPointsAssigned += privateCentroid[j].numPointsAssigned;
+#pragma omp atomic update
+                    centroids[j].x += privateCentroid[j].x;
+#pragma omp atomic update
+                    centroids[j].y += privateCentroid[j].y;
+                }
 
-                    for (int i = 0; i < numPoints; i++) {
-                        if(points[i].assignedCentroid == j) {
-                            numPoint++;
-                            x += points[i].x;
-                            y += points[i].y;
-                        }
-                    }
-                    centroids[j].x = x / numPoint;
-                    centroids[j].y = y / numPoint;
+#pragma omp barrier
+
+#pragma omp for nowait
+                for (int j = 0; j < numCentroids; j++) {
+                    centroids[j].x /= centroids[j].numPointsAssigned;
+                    centroids[j].y /= centroids[j].numPointsAssigned;
                 }
             }
 
